@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      semantic-release-version:
+        description: The version of semantic-release to use.
+        default: 25.0.2
+        required: false
+        type: string
+      semantic-release-plugin-git-version:
+        description: The version of the semantic-release git plugin to use.
+        default: 10.0.1
+        required: false
+        type: string
+      semantic-release-plugin-conventionalcommits-version:
+        description: The version of the semantic-release conventional-changelog-conventionalcommits plugin to use.
+        default: 9.1.0
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    # Skip running release workflow on forks
+    if: github.repository_owner == 'craigsloggett-lab'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+    - name: Release
+      id: release
+      uses: cycjimmy/semantic-release-action@ba330626c4750c19d8299de843f05c7aa5574f62 # v5.0.2
+      with:
+        semantic_version: ${{ inputs.semantic-release-version }}
+        extra_plugins: |
+          @semantic-release/git@${{ inputs.semantic-release-plugin-git-version }}
+          conventional-changelog-conventionalcommits@${{ inputs.semantic-release-plugin-conventionalcommits-version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
