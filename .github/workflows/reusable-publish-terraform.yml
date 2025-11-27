@@ -1,0 +1,92 @@
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      new-release-version:
+        description: The new release version number.
+        required: true
+        type: string
+      hcp-terraform-organization-name:
+        description: The name of the HCP Terraform organization the Terraform module is being published to.
+        required: true
+        type: string
+      hcp-terraform-hostname:
+        description: The (optional) hostname of the HCP Terraform organization.
+        default: app.terraform.io
+        required: false
+        type: string
+    secrets:
+      hcp-terraform-api-token:
+        description: The API token used to publish the Terraform module to a Private Module Registry.
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  private-module-registry:
+    name: Private Module Registry
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+    - name: Get Module Metadata
+      id: get-module-metadata
+      run: |
+        github_repository_url="${{ github.server_url }}/${{ github.repository }}"
+        authorization_header="Authorization: Bearer ${{ secrets.hcp-terraform-api-token }}"
+        organization_name="${{ inputs.hcp-terraform-organization-name }}"
+        hostname=${{ inputs.hcp-terraform-hostname }}
+        list_modules_endpoint="https://${hostname}/api/v2/organizations/${organization_name}/registry-modules"
+
+        module_json="$(
+          curl \
+            --silent \
+            --header "${authorization_header}" \
+            --request GET \
+            "${list_modules_endpoint}" |
+            jq -r --arg repository_http_url "${github_repository_url}" '.data[]
+              | select(.attributes["vcs-repo"]["repository-http-url"]
+              | contains($repository_http_url))'
+        )"
+        module_name="$(printf '%s\n' "${module_json}" | jq -r '.attributes.name')"
+        module_provider="$(printf '%s\n' "${module_json}" | jq -r '.attributes.provider')"
+
+        printf 'name=%s\n' "${module_name}" >> "$GITHUB_OUTPUT"
+        printf 'provider=%s\n' "${module_provider}" >> "$GITHUB_OUTPUT"
+    - name: Publish
+      run: |-
+        module_name="${{ steps.get-module-metadata.outputs.name }}"
+        module_provider="${{ steps.get-module-metadata.outputs.provider }}"
+        module_version="${{ inputs.new-release-version }}"
+        commit_sha="${{ github.sha }}"
+
+        cat << EOF > payload.json
+          {
+            "data": {
+              "type": "registry-module-versions",
+              "attributes": {
+                "version": "${module_version}",
+                "commit-sha": "${commit_sha}"
+              }
+            }
+          }
+        EOF
+
+        authorization_header="Authorization: Bearer ${{ secrets.hcp-terraform-api-token }}"
+        content_type_header="Content-Type: application/vnd.api+json"
+        organization_name="${{ inputs.hcp-terraform-organization-name }}"
+        hostname=${{ inputs.hcp-terraform-hostname }}
+        registry_modules_url="https://${hostname}/api/v2/organizations/${organization_name}/registry-modules/private"
+        create_module_version_endpoint="${registry_modules_url}/${organization_name}/${module_name}/${module_provider}/versions"
+
+        curl \
+          --silent \
+          --header "${authorization_header}" \
+          --header "${content_type_header}" \
+          --request POST \
+          --data @payload.json \
+          "${create_module_version_endpoint}"
