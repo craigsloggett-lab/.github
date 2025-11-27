@@ -53,3 +53,7 @@ jobs:
           conventional-changelog-conventionalcommits@${{ inputs.semantic-release-plugin-conventionalcommits-version }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Output
+      run: |-
+        printf '%s\n' "${{ steps.release.outputs.new_release_published }}"
+        printf '%s\n' "${{ steps.release.outputs.new_release_version }}"

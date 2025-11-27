@@ -43,7 +43,11 @@ jobs:
         list_modules_endpoint="https://${hostname}/api/v2/organizations/${organization_name}/registry-modules"
 
         module_json="$(
-          curl --request GET --header "${authorization_header}" "${list_modules_endpoint}" |
+          curl \
+            --silent \
+            --header "${authorization_header}" \
+            --request GET \
+            "${list_modules_endpoint}" |
             jq -r --arg repository_http_url "${github_repository_url}" '.data[]
               | select(.attributes["vcs-repo"]["repository-http-url"]
               | contains($repository_http_url))'
@@ -80,6 +84,7 @@ jobs:
         create_module_version_endpoint="${registry_modules_url}/${organization_name}/${module_name}/${module_provider}/versions"
 
         curl \
+          --silent \
           --header "${authorization_header}" \
           --header "${content_type_header}" \
           --request POST \
