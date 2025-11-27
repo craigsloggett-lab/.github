@@ -1,26 +1,20 @@
-name: Release
+name: Publish
 
 on:
   workflow_call:
     inputs:
-      semantic-release-version:
-        description: The version of semantic-release to use.
-        default: 25.0.2
-        required: false
+      new-release-version:
+        description: The new release version number.
+        required: true
         type: string
-      semantic-release-plugin-git-version:
-        description: The version of the semantic-release git plugin to use.
-        default: 10.0.1
-        required: false
-        type: string
-      semantic-release-plugin-conventionalcommits-version:
-        description: The version of the semantic-release conventional-changelog-conventionalcommits plugin to use.
-        default: 9.1.0
-        required: false
-        type: string
-      hcp-terraform-organization:
+      hcp-terraform-organization-name:
         description: The name of the HCP Terraform organization the Terraform module is being published to.
         required: true
+        type: string
+      hcp-terraform-hostname:
+        description: The (optional) hostname of the HCP Terraform organization.
+        default: app.terraform.io
+        required: false
         type: string
     secrets:
       hcp-terraform-api-token:
@@ -33,34 +27,20 @@ permissions:
   pull-requests: write
 
 jobs:
-  release:
-    name: Release
+  private-module-registry:
+    name: Private Module Registry
     runs-on: ubuntu-24.04
-    # Skip running release workflow on forks
-    if: github.repository_owner == 'craigsloggett-lab'
-    env:
-      HCP_TERRAFORM_ORGANIZATION: ${{ inputs.hcp-terraform-organization }}
-      TF_TOKEN_app_terraform_io: ${{ secrets.hcp-terraform-api-token }}
     steps:
     - name: Checkout
       uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-    - name: Release
-      id: release
-      uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
-      with:
-        semantic_version: ${{ inputs.semantic-release-version }}
-        extra_plugins: |
-          @semantic-release/git@${{ inputs.semantic-release-plugin-git-version }}
-          conventional-changelog-conventionalcommits@${{ inputs.semantic-release-plugin-conventionalcommits-version }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Get Module Metadata
-      if: steps.release.outputs.new_release_published == 'true'
       id: get-module-metadata
       run: |
         github_repository_url="${{ github.server_url }}/${{ github.repository }}"
-        authorization_header="Authorization: Bearer ${TF_TOKEN_app_terraform_io}"
-        list_modules_endpoint="https://app.terraform.io/api/v2/organizations/${HCP_TERRAFORM_ORGANIZATION}/registry-modules"
+        authorization_header="Authorization: Bearer ${{ secrets.hcp-terraform-api-token }}"
+        organization_name="${{ inputs.hcp-terraform-organization-name }}"
+        hostname=${{ inputs.hcp-terraform-hostname }}
+        list_modules_endpoint="https://${hostname}/api/v2/organizations/${organization_name}/registry-modules"
 
         module_json="$(
           curl --request GET --header "${authorization_header}" "${list_modules_endpoint}" |
@@ -74,12 +54,12 @@ jobs:
         printf 'name=%s\n' "${module_name}" >> "$GITHUB_OUTPUT"
         printf 'provider=%s\n' "${module_provider}" >> "$GITHUB_OUTPUT"
     - name: Publish
-      if: steps.release.outputs.new_release_published == 'true'
       run: |-
         module_name="${{ steps.get-module-metadata.outputs.name }}"
         module_provider="${{ steps.get-module-metadata.outputs.provider }}"
-        module_version="${{ steps.release.outputs.new_release_version }}"
+        module_version="${{ inputs.new-release-version }}"
         commit_sha="${{ github.sha }}"
+
         cat << EOF > payload.json
           {
             "data": {
@@ -92,11 +72,12 @@ jobs:
           }
         EOF
 
-        authorization_header="Authorization: Bearer ${TF_TOKEN_app_terraform_io}"
+        authorization_header="Authorization: Bearer ${{ secrets.hcp-terraform-api-token }}"
         content_type_header="Content-Type: application/vnd.api+json"
-
-        registry_modules_url="https://app.terraform.io/api/v2/organizations/${HCP_TERRAFORM_ORGANIZATION}/registry-modules/private"
-        create_module_version_endpoint="${registry_modules_url}/${HCP_TERRAFORM_ORGANIZATION}/${module_name}/${module_provider}/versions"
+        organization_name="${{ inputs.hcp-terraform-organization-name }}"
+        hostname=${{ inputs.hcp-terraform-hostname }}
+        registry_modules_url="https://${hostname}/api/v2/organizations/${organization_name}/registry-modules/private"
+        create_module_version_endpoint="${registry_modules_url}/${organization_name}/${module_name}/${module_provider}/versions"
 
         curl \
           --header "${authorization_header}" \
