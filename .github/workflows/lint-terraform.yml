@@ -23,6 +23,15 @@ on:
         default: 0.60.0
         required: false
         type: string
+      hcp-terraform-hostname:
+        description: The hostname of the HCP Terraform organization.
+        default: app.terraform.io
+        required: false
+        type: string
+    secrets:
+      hcp-terraform-api-token:
+        description: The API token used to lint Terraform modules in a Private Module Registry.
+        required: false
 
 permissions:
   contents: read
@@ -89,6 +98,18 @@ jobs:
       uses: terraform-linters/setup-tflint@v6
       with:
         tflint_version: v${{ inputs.tflint-version }}
+    - name: Export HCP Terraform API Token
+      run: |
+        # The hostname must be sanitized to be exported correctly.
+        sanitized_hostname="$(
+          printf '%s\n' ${{ inputs.hcp-terraform-hostname }} \
+          | tr '.' '_' \
+          | sed 's/-/__/g'
+        )"
+        # The name of the environment variable.
+        tf_token_variable_name="TF_TOKEN_${sanitized_hostname}"
+        # Export the API token.
+        printf '%s=%s' "${tf_token_variable_name}" "${{ secrets.hcp-terraform-api-token }}" >> "${GITHUB_ENV}"
     - name: TFLint
       run: |
         terraform init -backend=false
