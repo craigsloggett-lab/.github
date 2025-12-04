@@ -10,12 +10,12 @@ on:
         type: string
       python-version:
         description: The version of Python to use when running `yamllint`.
-        default: 3.14.0
+        default: 3.14.1
         required: false
         type: string
       terraform-version:
         description: The version of Terraform to use when running `terraform fmt` and `tflint`.
-        default: 1.14.0
+        default: 1.14.1
         required: false
         type: string
       tflint-version:
